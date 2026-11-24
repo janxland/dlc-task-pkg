@@ -74,9 +74,9 @@ try:
         raise RuntimeError("source missing after extract")
     # 2) torch cpu cp38 + 依赖（py3.8 兼容版本）
     log("pull torch wheels from OSS")
-    r = oss_signed_req("GET", "code/torch311.whl"); open("/root/work/torch311.whl", "wb").write(r.read())
-    r = oss_signed_req("GET", "code/torchvision311.whl"); open("/root/work/torchvision311.whl", "wb").write(r.read())
-    sh(P + "/pip install -q --no-deps -U /root/work/torch311.whl /root/work/torchvision311.whl")
+    r = oss_signed_req("GET", "code/torch311.whl"); open("/root/work/torch-2.4.0+cpu-cp311-cp311-linux_x86_64.whl", "wb").write(r.read())
+    r = oss_signed_req("GET", "code/torchvision311.whl"); open("/root/work/torchvision-0.19.0+cpu-cp311-cp311-linux_x86_64.whl", "wb").write(r.read())
+    sh(P + "/pip install -q --no-deps -U /root/work/torch-2.4.0+cpu-cp311-cp311-linux_x86_64.whl /root/work/torchvision-0.19.0+cpu-cp311-cp311-linux_x86_64.whl")
     sh(P + "/pip install -q 'numpy==1.24.4' 'pillow==10.3.0' 'scipy==1.10.1' 'timm>=1.0.27,<1.1' 'huggingface-hub' 'av<14' 'typing-extensions>=4.8' pillow-heif click matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
     # 3) 权重（Apple CDN，先查缓存不重复下）
     os.makedirs("torch_home/hub/checkpoints", exist_ok=True)
