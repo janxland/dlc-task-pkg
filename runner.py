@@ -27,7 +27,13 @@ def oss_put(key, filepath):
 def download(url, path):
     log("download", url)
     t0 = time.time()
-    urllib.request.urlretrieve(url, path)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
+        while True:
+            chunk = r.read(1 << 20)
+            if not chunk:
+                break
+            f.write(chunk)
     log("  done %.1fMB %.0fs" % (os.path.getsize(path)/1e6, time.time()-t0))
 
 def sh(cmd):
@@ -41,7 +47,7 @@ def sh(cmd):
 try:
     log("=== runner start", time.strftime("%F %T"), "nproc", os.cpu_count())
     # 1) miniconda py311
-    download("https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh", "/root/mc.sh")
+    download("https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-py311_24.7.1-0-Linux-x86_64.sh", "/root/mc.sh")
     sh("bash /root/mc.sh -b -p /root/mc")
     sh("/root/mc/bin/conda create -y -n dp python=3.11")
     P = "/root/mc/envs/dp/bin"
