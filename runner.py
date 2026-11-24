@@ -67,7 +67,7 @@ try:
         raise RuntimeError("source missing after extract")
     # 2) torch cpu cp38 + 依赖（py3.8 兼容版本）
     sh(P + "/pip install -q --no-deps -U https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.4.0%2Bcpu-cp38-cp38-linux_x86_64.whl https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.19.0%2Bcpu-cp38-cp38-linux_x86_64.whl")
-    sh(P + "/pip install -q 'numpy<2' 'pillow<10.5' 'scipy<1.11' 'timm>=1.0.27,<1.1' 'huggingface-hub<1.0' 'av<14' pillow-heif click matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
+    sh(P + "/pip install -q 'numpy==1.24.4' 'pillow==10.3.0' 'scipy==1.10.1' 'timm>=1.0.27,<1.1' 'huggingface-hub<1.0' 'av<14' 'typing-extensions>=4.8' pillow-heif click matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
     # 3) 权重（Apple CDN，先查缓存不重复下）
     os.makedirs("torch_home/hub/checkpoints", exist_ok=True)
     for fn in ["depthpro2-fov-ew55zg4kq7.pt", "depthpro2-s-bgcc6f8bg3.pt", "depthpro2-l-tegstu7fim.pt"]:
@@ -75,8 +75,10 @@ try:
         if os.path.exists(p) and os.path.getsize(p) > 1e6:
             log("cached:", fn); continue
         download("https://ml-site.cdn-apple.com/models/depth-pro-2/" + fn, p)
-    # 4) 推理（S + L）
-    os.environ["PYTHONPATH"] = "/root/work/task/depth_pro_2_src"
+    # 4) 推理（S + L）：把平铺源码组装成包目录
+    os.makedirs("pkg", exist_ok=True)
+    sh("cp -r task/depth_pro_2_src pkg/depth_pro_2")
+    os.environ["PYTHONPATH"] = "/root/work/pkg"
     os.environ["TORCH_HOME"] = "/root/work/torch_home"
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
     sh(P + "/python -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
