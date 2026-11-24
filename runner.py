@@ -92,8 +92,14 @@ try:
     os.environ["PYTHONPATH"] = "/root/work/pkg"
     os.environ["TORCH_HOME"] = "/root/work/torch_home"
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    sh(P + "/python3 -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
-    sh(P + "/python3 -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-l --save-npz --save-png16")
+    # cli.py 无 __main__ 入口，必须显式调用 click group main_cli
+    ENTRY = P + '/python3 -c "from depth_pro_2.cli import main_cli; main_cli()"'
+    sh(ENTRY + " predict -i task/input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
+    sh(ENTRY + " predict -i task/input/yuantu.jpg -o output/ -m depthpro2-l --save-npz --save-png16")
+    outs = os.listdir("output") if os.path.isdir("output") else []
+    log("output files:", outs)
+    if not outs:
+        raise RuntimeError("no output produced")
     # 5) 上传结果
     for f in sorted(os.listdir("output")):
         oss_put("output/" + f, "output/" + f)
