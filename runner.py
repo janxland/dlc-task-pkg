@@ -73,7 +73,10 @@ try:
     if not os.path.exists("task/depth_pro_2_src/cli.py"):
         raise RuntimeError("source missing after extract")
     # 2) torch cpu cp38 + 依赖（py3.8 兼容版本）
-    sh(P + "/pip install -q --no-deps -U https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.4.0%2Bcpu-cp311-cp311-linux_x86_64.whl https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.19.0%2Bcpu-cp311-cp311-linux_x86_64.whl")
+    log("pull torch wheels from OSS")
+    r = oss_signed_req("GET", "code/torch311.whl"); open("/root/work/torch311.whl", "wb").write(r.read())
+    r = oss_signed_req("GET", "code/torchvision311.whl"); open("/root/work/torchvision311.whl", "wb").write(r.read())
+    sh(P + "/pip install -q --no-deps -U /root/work/torch311.whl /root/work/torchvision311.whl")
     sh(P + "/pip install -q 'numpy==1.24.4' 'pillow==10.3.0' 'scipy==1.10.1' 'timm>=1.0.27,<1.1' 'huggingface-hub' 'av<14' 'typing-extensions>=4.8' pillow-heif click matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
     # 3) 权重（Apple CDN，先查缓存不重复下）
     os.makedirs("torch_home/hub/checkpoints", exist_ok=True)
@@ -88,8 +91,8 @@ try:
     os.environ["PYTHONPATH"] = "/root/work/pkg"
     os.environ["TORCH_HOME"] = "/root/work/torch_home"
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    sh(P + "/python -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
-    sh(P + "/python -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-l --save-npz --save-png16")
+    sh(P + "/python3 -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
+    sh(P + "/python3 -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-l --save-npz --save-png16")
     # 5) 上传结果
     for f in sorted(os.listdir("output")):
         oss_put("output/" + f, "output/" + f)
