@@ -7,34 +7,39 @@ HOST = BUCKET + ".oss-cn-hangzhou.aliyuncs.com"
 os.makedirs("/root/work", exist_ok=True)
 os.chdir("/root/work")
 LOG = open("/root/work/run.log", "a", buffering=1)
+P = "/opt/conda/bin"   # 镜像自带 conda py3.8
 
 def log(*a):
     s = " ".join(str(x) for x in a)
     print(s, flush=True)
     LOG.write(s + "\n"); LOG.flush()
 
-def oss_put(key, filepath):
+def oss_signed_req(method, key, body=None):
     d = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
-    body = open(filepath, "rb").read()
-    s2s = "PUT\n\napplication/octet-stream\n%s\n/%s/%s" % (d, BUCKET, key)
+    ct = "application/octet-stream" if body else ""
+    s2s = "%s\n\n%s\n%s\n/%s/%s" % (method, ct, d, BUCKET, key)
     sig = base64.b64encode(hmac.new(SK.encode(), s2s.encode(), hashlib.sha1).digest()).decode()
-    req = urllib.request.Request("https://%s/%s" % (HOST, key), data=body, method="PUT")
-    req.add_header("Date", d); req.add_header("Content-Type", "application/octet-stream")
+    req = urllib.request.Request("https://%s/%s" % (HOST, key), data=body, method=method)
+    req.add_header("Date", d)
+    if ct: req.add_header("Content-Type", ct)
     req.add_header("Authorization", "OSS %s:%s" % (AK, sig))
-    r = urllib.request.urlopen(req, timeout=180)
+    return urllib.request.urlopen(req, timeout=180)
+
+def oss_put(key, filepath):
+    r = oss_signed_req("PUT", key, open(filepath, "rb").read())
     log("oss_put", key, "->", r.status)
 
 def download(url, path):
     log("download", url)
     t0 = time.time()
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=120) as r, open(path, "wb") as f:
+    with urllib.request.urlopen(req, timeout=180) as r, open(path, "wb") as f:
+        n = 0
         while True:
             chunk = r.read(1 << 20)
-            if not chunk:
-                break
-            f.write(chunk)
-    log("  done %.1fMB %.0fs" % (os.path.getsize(path)/1e6, time.time()-t0))
+            if not chunk: break
+            f.write(chunk); n += len(chunk)
+    log("  done %.1fMB %.0fs" % (n/1e6, time.time()-t0))
 
 def sh(cmd):
     log("$", cmd)
@@ -45,23 +50,35 @@ def sh(cmd):
         raise RuntimeError("cmd failed: " + cmd)
 
 try:
-    log("=== runner start", time.strftime("%F %T"), "nproc", os.cpu_count())
-    # 1) miniconda py311
-    download("https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-py311_24.7.1-0-Linux-x86_64.sh", "/root/mc.sh")
-    sh("bash /root/mc.sh -b -p /root/mc")
-    sh("/root/mc/bin/conda create -y -n dp python=3.11")
-    P = "/root/mc/envs/dp/bin"
-    # 2) torch cpu + deps
-    sh(P + "/pip install -q --no-deps https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.4.0%2Bcpu-cp311-cp311-linux_x86_64.whl https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.19.0%2Bcpu-cp311-cp311-linux_x86_64.whl")
-    sh(P + "/pip install -q numpy pillow scipy timm av pillow-heif click huggingface_hub matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
-    # 3) weights from Apple CDN
+    log("=== runner start", time.strftime("%F %T"), "py:", sys.version.split()[0], "nproc", os.cpu_count())
+    # 1) 拉任务包（源码+输入图）：jsDelivr 优先，OSS 签名 GET 兜底
+    try:
+        download("https://cdn.jsdelivr.net/gh/janxland/dlc-task-pkg@3a6d8f1ea7a3/task.tar.gz", "task.tar.gz")
+        log("task package from jsdelivr")
+    except Exception as e:
+        log("jsdelivr fail:", repr(e)[:150], " -> OSS fallback")
+        r = oss_signed_req("GET", "task/task.tar.gz")
+        open("task.tar.gz", "wb").write(r.read())
+        log("task package from OSS")
+    with tarfile.open("task.tar.gz") as t:
+        t.extractall(".")
+    log("extracted:", os.listdir("task")[:6])
+    if not os.path.exists("depth_pro_2_src/depth_pro_2/__init__.py"):
+        raise RuntimeError("source missing after extract")
+    # 2) torch cpu cp38 + 依赖（py3.8 兼容版本）
+    sh(P + "/pip install -q --no-deps -U https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.4.0%2Bcpu-cp38-cp38-linux_x86_64.whl https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.19.0%2Bcpu-cp38-cp38-linux_x86_64.whl")
+    sh(P + "/pip install -q 'numpy<2' 'pillow<10.5' 'scipy<1.11' 'timm>=1.0.27,<1.1' 'huggingface-hub<1.0' 'av<14' pillow-heif click matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
+    # 3) 权重（Apple CDN，先查缓存不重复下）
     os.makedirs("torch_home/hub/checkpoints", exist_ok=True)
     for fn in ["depthpro2-fov-ew55zg4kq7.pt", "depthpro2-s-bgcc6f8bg3.pt", "depthpro2-l-tegstu7fim.pt"]:
-        download("https://ml-site.cdn-apple.com/models/depth-pro-2/" + fn, "torch_home/hub/checkpoints/" + fn)
-    # 4) inference
-    sh(P + "/python -m depth_pro_2.cli predict -i input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
-    sh(P + "/python -m depth_pro_2.cli predict -i input/yuantu.jpg -o output/ -m depthpro2-l --save-npz --save-png16")
-    # 5) push outputs
+        p = "torch_home/hub/checkpoints/" + fn
+        if os.path.exists(p) and os.path.getsize(p) > 1e6:
+            log("cached:", fn); continue
+        download("https://ml-site.cdn-apple.com/models/depth-pro-2/" + fn, p)
+    # 4) 推理（S + L）
+    sh(P + "/python -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
+    sh(P + "/python -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-l --save-npz --save-png16")
+    # 5) 上传结果
     for f in sorted(os.listdir("output")):
         oss_put("output/" + f, "output/" + f)
     log("=== ALL DONE")
@@ -71,5 +88,6 @@ except Exception:
 finally:
     try:
         oss_put("logs/run.log", "/root/work/run.log")
+        print("LOG_UPLOADED")
     except Exception as e:
-        print("log upload failed:", e)
+        print("log upload failed:", repr(e)[:200])
