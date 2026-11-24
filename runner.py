@@ -63,7 +63,7 @@ try:
     with tarfile.open("task.tar.gz") as t:
         t.extractall(".")
     log("extracted:", os.listdir("task")[:6])
-    if not os.path.exists("depth_pro_2_src/depth_pro_2/__init__.py"):
+    if not os.path.exists("task/depth_pro_2_src/depth_pro_2/__init__.py"):
         raise RuntimeError("source missing after extract")
     # 2) torch cpu cp38 + 依赖（py3.8 兼容版本）
     sh(P + "/pip install -q --no-deps -U https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.4.0%2Bcpu-cp38-cp38-linux_x86_64.whl https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.19.0%2Bcpu-cp38-cp38-linux_x86_64.whl")
@@ -76,6 +76,9 @@ try:
             log("cached:", fn); continue
         download("https://ml-site.cdn-apple.com/models/depth-pro-2/" + fn, p)
     # 4) 推理（S + L）
+    os.environ["PYTHONPATH"] = "/root/work/task/depth_pro_2_src"
+    os.environ["TORCH_HOME"] = "/root/work/torch_home"
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
     sh(P + "/python -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-s --save-npz --save-png16")
     sh(P + "/python -m depth_pro_2.cli predict -i task/input/yuantu.jpg -o output/ -m depthpro2-l --save-npz --save-png16")
     # 5) 上传结果
