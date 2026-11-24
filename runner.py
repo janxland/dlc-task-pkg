@@ -80,13 +80,6 @@ try:
     os.makedirs("pkg", exist_ok=True)
     sh("cp -r task/depth_pro_2_src pkg/depth_pro_2")
     sh(P + "/python task/py38_patch.py")
-    # py38 兼容补丁：模块级 union 常量（future 注解救不了运行时赋值）
-    sh(P + "/python -c \"import pathlib\n"
-       + "p = pathlib.Path('/root/work/pkg/depth_pro_2/streaming.py')\n"
-       + "s = p.read_text()\n"
-       + "s = s.replace('Prediction = Mapping[str, torch.Tensor | None]', 'Prediction = Mapping[str, Optional[torch.Tensor]]')\n"
-       + "s = s.replace('from typing import', 'from typing import Optional, ') if 'Optional' not in s.split(chr(10))[0:30].__str__() else s\n"
-       + "p.write_text(s)""
     os.environ["PYTHONPATH"] = "/root/work/pkg"
     os.environ["TORCH_HOME"] = "/root/work/torch_home"
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
