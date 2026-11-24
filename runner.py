@@ -7,7 +7,6 @@ HOST = BUCKET + ".oss-cn-hangzhou.aliyuncs.com"
 os.makedirs("/root/work", exist_ok=True)
 os.chdir("/root/work")
 LOG = open("/root/work/run.log", "a", buffering=1)
-P = "/opt/conda/bin"   # 镜像自带 conda py3.8
 
 def log(*a):
     s = " ".join(str(x) for x in a)
@@ -51,6 +50,14 @@ def sh(cmd):
 
 try:
     log("=== runner start", time.strftime("%F %T"), "py:", sys.version.split()[0], "nproc", os.cpu_count())
+    # 0) python3.11 from OSS（python-build-standalone）
+    if not os.path.exists("/root/py311/python/bin/python3"):
+        r = oss_signed_req("GET", "code/cpython311.tar.gz")
+        open("/root/py311.tar.gz", "wb").write(r.read())
+        with tarfile.open("/root/py311.tar.gz") as t:
+            t.extractall("/root/py311")
+        log("python3.11 installed:", os.popen("/root/py311/python/bin/python3 -V").read().strip())
+    P = "/root/py311/python/bin"
     # 1) 拉任务包（源码+输入图）：jsDelivr 优先，OSS 签名 GET 兜底
     try:
         download("https://cdn.jsdelivr.net/gh/janxland/dlc-task-pkg@3a6d8f1ea7a3/task.tar.gz", "task.tar.gz")
@@ -66,9 +73,8 @@ try:
     if not os.path.exists("task/depth_pro_2_src/cli.py"):
         raise RuntimeError("source missing after extract")
     # 2) torch cpu cp38 + 依赖（py3.8 兼容版本）
-    sh(P + "/pip install -q --no-deps -U https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.4.0%2Bcpu-cp38-cp38-linux_x86_64.whl https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.19.0%2Bcpu-cp38-cp38-linux_x86_64.whl")
-    sh(P + "/pip install -q -U 'pip<24.1' -i https://pypi.tuna.tsinghua.edu.cn/simple")
-    sh(P + "/pip install -q 'numpy==1.24.4' 'pillow==10.3.0' 'scipy==1.10.1' 'timm>=1.0.27,<1.1' 'huggingface-hub<1.0' 'av<14' 'typing-extensions>=4.8' pillow-heif click matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
+    sh(P + "/pip install -q --no-deps -U https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.4.0%2Bcpu-cp311-cp311-linux_x86_64.whl https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.19.0%2Bcpu-cp311-cp311-linux_x86_64.whl")
+    sh(P + "/pip install -q 'numpy==1.24.4' 'pillow==10.3.0' 'scipy==1.10.1' 'timm>=1.0.27,<1.1' 'huggingface-hub' 'av<14' 'typing-extensions>=4.8' pillow-heif click matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple")
     # 3) 权重（Apple CDN，先查缓存不重复下）
     os.makedirs("torch_home/hub/checkpoints", exist_ok=True)
     for fn in ["depthpro2-fov-ew55zg4kq7.pt", "depthpro2-s-bgcc6f8bg3.pt", "depthpro2-l-tegstu7fim.pt"]:
@@ -79,7 +85,6 @@ try:
     # 4) 推理（S + L）：把平铺源码组装成包目录
     os.makedirs("pkg", exist_ok=True)
     sh("cp -r task/depth_pro_2_src pkg/depth_pro_2")
-    sh(P + "/python task/py38_patch.py")
     os.environ["PYTHONPATH"] = "/root/work/pkg"
     os.environ["TORCH_HOME"] = "/root/work/torch_home"
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
